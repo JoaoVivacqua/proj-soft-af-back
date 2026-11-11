@@ -1,0 +1,57 @@
+name: Testes
+
+# Roda em todo Pull Request para a main (e pode ser disparado na mao pela aba Actions).
+on:
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  testes:
+    runs-on: ubuntu-latest
+
+    # Postgres so para os testes (o contextLoads sobe a aplicacao e precisa de banco).
+    # Usa os mesmos valores padrao do application.properties, entao nao precisa de env.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: auladb
+          POSTGRES_USER: usuario
+          POSTGRES_PASSWORD: senha
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U usuario -d auladb"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Java 25
+        uses: actions/setup-java@v4
+        with:
+          java-version: "25"
+          distribution: temurin
+          cache: maven
+
+      # verify = compila + testes + relatorio JaCoCo + checagem de cobertura minima (pom.xml)
+      - name: Testes e cobertura
+        run: ./mvnw -B verify
+
+      # Comentario com a cobertura no PR (so informativo; quem reprova e o passo acima)
+      - name: Comentar cobertura no PR
+        if: always() && github.event_name == 'pull_request'
+        continue-on-error: true
+        uses: madrapps/jacoco-report@v1.7.2
+        with:
+          paths: target/site/jacoco/jacoco.xml
+          token: ${{ secrets.GITHUB_TOKEN }}
+          title: Cobertura de testes
